@@ -1,21 +1,17 @@
-# 🛡️ Quantum-Safe Infrastructure Dashboard
+# 🛡️ Quantum-Safe Infrastructure & QKD Analyzer
 
-פרויקט אישי שבו הקמתי תשתית ענן מלאה (AWS) שמריצה סימולציה של הצפנה קוונטית (פרוטוקול BB84).
-המטרה הייתה לקחת קונספט תיאורטי מורכב ולהפוך אותו למוצר עובד, מנוהל וקריא בתוך Docker.
+מערכת ענן מתקדמת לניתוח והדמיה של פרוטוקולי אבטחה קוונטיים (BB84). הפרויקט משלב תשתית ענן אוטומטית (IaC) עם מנוע חישוב קוונטי מבוסס Qiskit, ומספק Dashboard לניתוח פגיעויות בזמן אמת.
 
-## 🛠️ מה עשיתי בפרויקט?
-* **Infrastructure as Code:** השתמשתי ב-**Terraform** כדי להקים אוטומטית שרת EC2 ב-AWS, כולל ניהול Security Groups ומפתחות גישה.
-* **Containerization:** ארזתי את כל האפליקציה (Flask + Qiskit) בתוך **Docker**. זה איפשר לי להתגבר על ספריות מדעיות כבדות ולהבטיח שהסביבה תרוץ בצורה זהה בכל מקום.
-* **Backend & Logic:** כתבתי ב-**Python** סימולטור שמדמה העברת מפתחות קוונטיים, כולל זיהוי האזנות (Eavesdropping) בזמן אמת.
-* **Visualization:** יצרתי Dashboard ב-Dark Mode שמנתח את המצב הקוונטי (Bloch Sphere) ומציג את אחוז השגיאות במערכת.
+## ⚙️ יכולות המערכת
+* **Automated Provisioning:** פריסה מלאה של תשתית AWS (EC2, Networking, Security) תוך שניות באמצעות **Terraform**.
+* **Real-time QKD Simulation:** הרצת פרוטוקול BB84 להחלפת מפתחות מוצפנים על גבי סימולטור קוונטי.
+* **Vulnerability Detection:** זיהוי אוטומטי של "האזנה" (Eavesdropping) בערוץ הקוונטי על ידי ניתוח קריסת פונקציית הגל.
+* **Advanced Analytics Dashboard:** תצוגה ויזואלית של מצבים קוונטיים על גבי כדור בלוך (Bloch Sphere) וחישוב אחוז שגיאות (QBER) להערכת רמת האבטחה.
+* **Containerized Deployment:** המערכת ארוזה ב-**Docker** להבטחת ביצועים אחידים ופריסה מהירה (Scalability).
 
-## 🚀 איך מריצים?
-1. בונים את ה-Image:
-   `docker build -t quantum-api .`
-2. מריצים את הקונטיינר:
-   `docker run -p 5000:5000 quantum-api`
-3. ניגשים לדשבורד (בדפדפן):
-   `http://localhost:5000/qkd/visualize?bits=24&eve=true`
+## 🏗️ ארכיטקטורה טכנית
+המערכת בנויה בארכיטקטורת **Microservices** מודרנית:
+1. **Infrastructure Layer:** ניהול משאבי ענן ב-AWS באמצעות קוד (IaC).
+2. **Logic Layer:** מנוע Python המריץ לוגיקה קוונטית וממשק API מבוסס Flask.
+3. **Visualization Layer:** רינדור Dashboard דינמי המציג את תקינות המפתח והשוואה בין בסיסי השידור.
 
-## 🧠 אתגרים שהתמודדתי איתם
-היה לי חשוב שה-Dockerfile יהיה יעיל, לכן השתמשתי בגרסת `slim` של Python וביצעתי אופטימיזציה להתקנת ספריות המערכת (כמו `libpng` ו-`freetype`) שנדרשות עבור הגרפיקה, תוך שמירה על נפח Image מינימלי.
