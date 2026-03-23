@@ -1,0 +1,6 @@
+.terraform/
+*.tfstate
+*.tfstate.backup
+.terraform.lock.hcl
+quantum_key
+quantum_key.pub
