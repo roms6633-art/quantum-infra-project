@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  quantum-api:
+    build: .
+    image: quantum-api:latest
+    container_name: quantum-dashboard
+    ports:
+      - "5000:5000"
+    restart: always
+    environment:
+      - FLASK_ENV=production

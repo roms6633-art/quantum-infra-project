@@ -1,0 +1,27 @@
+name: Continuous Integration
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Build Docker Image
+      run: docker build -t quantum-api:latest .
+      
+    - name: Run Container & Health Check
+      run: |
+        docker run -d -p 5000:5000 --name test-container quantum-api:latest
+        echo "Waiting for Flask to boot..."
+        sleep 5
+        curl -f http://localhost:5000/health || exit 1
+        echo "Health check passed!"
+        docker rm -f test-container
