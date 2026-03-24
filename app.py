@@ -4,6 +4,7 @@ matplotlib.use('Agg')
 from flask import Flask, jsonify, request, send_file
 from qiskit import QuantumCircuit, transpile
 from qiskit_aer import AerSimulator
+from qiskit_aer.noise import NoiseModel, depolarizing_error # הספריות החדשות לרעש הפיזיקלי
 import io
 import numpy as np
 import matplotlib.pyplot as plt
@@ -34,7 +35,16 @@ def perform_qkd_logic(num_bits, eavesdropper):
         if bob_bases[i] == 1: qc.h(i)
         qc.measure(i, i)
 
-    simulator = AerSimulator()
+    # --- הזרקת מודל הרעש הפיזיקלי לחומרה ---
+    noise_model = NoiseModel()
+    # אנחנו מגדירים הסתברות שגיאה של 3% על השערים כדי לדמות חוסר דיוק בחומרה האמיתית
+    error_gate = depolarizing_error(0.03, 1) 
+    noise_model.add_all_qubit_quantum_error(error_gate, ['x', 'h'])
+
+    # טוענים את הסימולטור יחד עם מודל הרעש שבנינו
+    simulator = AerSimulator(noise_model=noise_model)
+    # ----------------------------------------
+
     compiled_circuit = transpile(qc, simulator)
     result = simulator.run(compiled_circuit, shots=1).result()
     
@@ -80,12 +90,10 @@ def visualize_qkd():
     
     data = perform_qkd_logic(num_bits, eavesdropper)
     
-    # הגדרת עיצוב Dark Mode מובנה
     plt.style.use('dark_background')
     fig_width = max(num_bits * 0.5, 12) 
     fig = plt.figure(figsize=(fig_width, 14))
     
-    # צבע הרקע המרכזי (כחול-כהה יוקרתי כמו ב-IDE)
     fig.patch.set_facecolor('#0d1117')
     
     gs = gridspec.GridSpec(7, 1, height_ratios=[1, 1, 1, 1, 0.5, 1, 4])
@@ -95,7 +103,7 @@ def visualize_qkd():
     plt.subplots_adjust(hspace=0.6)
 
     for ax in axs:
-        ax.set_facecolor('#0d1117') # התאמת הרקע של כל שורה
+        ax.set_facecolor('#0d1117') 
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
         ax.spines['bottom'].set_color('#30363d')
@@ -104,7 +112,8 @@ def visualize_qkd():
     status_color = '#39d353' if data['secure'] else '#f85149'
     status_text = "SECURE (No Eve detected)" if data['secure'] else "BREACHED (Eve detected!)"
     
-    fig.suptitle(f"Quantum Security Dashboard (BB84)\nStatus: {status_text} | Error Rate: {data['qber']:.1%}", 
+    # הוספתי אינדיקציה בכותרת שמודל הרעש מופעל
+    fig.suptitle(f"Quantum Security Dashboard (BB84)\nStatus: {status_text} | Error Rate: {data['qber']:.1%} | Hardware Noise: Active", 
                  fontsize=18, fontweight='bold', color=status_color, y=0.95)
 
     subtitle_color = '#c9d1d9'
@@ -125,9 +134,7 @@ def visualize_qkd():
     
     axs[1].set_title("2. Quantum Channel", loc='left', fontsize=12, color=subtitle_color)
     
-    # סידור השורה של EVE שהפריעה לנו קודם
     if eavesdropper:
-        # הורדנו את הטקסט משמעותית למטה (y=-0.3) כדי שלא יעלה על הבלוקים
         axs[1].text(num_bits/2, -0.3, "⚠️ EVE INTERCEPTED AND MEASURED! ⚠️", ha='center', va='center', color='#f85149', fontsize=14, fontweight='bold')
         for i in range(num_bits): axs[1].scatter(i, 0, marker='X', color='#f85149', s=50, alpha=0.6)
     else:
@@ -150,7 +157,7 @@ def visualize_qkd():
 
     axs[4].axis('off')
     
-    axs[5].set_title("5. Final Sifted Keys Comparison", loc='left', fontsize=12, color=subtitle_color)
+    axs[5].set_title("5. Final Sifted Keys Comparison (with Hardware Noise)", loc='left', fontsize=12, color=subtitle_color)
     axs[5].set_ylim(-1, 2); axs[5].set_yticks([0, 1]); axs[5].set_yticklabels(["Bob Key", "Alice Key"], fontweight='bold', color=subtitle_color)
     axs[5].set_xlim(-0.5, num_bits - 0.5); axs[5].grid(True, axis='x', linestyle='--', color='#30363d', alpha=0.5)
 
@@ -164,7 +171,6 @@ def visualize_qkd():
             axs[5].text(i, 0, str(b_bit), ha='center', va='center', fontsize=12, color='white', bbox=bob_bbox)
             if is_error: axs[5].scatter(i, 0.5, marker='X', color='#f85149', s=100)
 
-    # כדור בלוך מעוצב ל-Dark Mode
     ax_bloch.set_title("Vulnerability Analysis: Quantum State on Bloch Sphere", fontsize=14, fontweight='bold', pad=0, y=1.15, color=subtitle_color)
     ax_bloch.set_facecolor('#0d1117') 
 
@@ -176,17 +182,17 @@ def visualize_qkd():
     ax_bloch.plot([0, 0], [0, 0], [-1.2, 1.2], color='#8b949e', linestyle='--', alpha=0.3) 
     
     ax_bloch.text(0, 0, 1.3, "|0> (Z)", ha='center', fontsize=12, color='white')
-    ax_bloch.text(0, 0, -1.3, "|1> (-Z)", ha='center', fontsize=12, color='white')
-    ax_bloch.text(1.3, 0, 0, "|+> (X)", ha='center', fontsize=12, color='white')
-    ax_bloch.text(-1.3, 0, 0, "|-> (-X)", ha='center', fontsize=12, color='white')
+    ax_bloch.text(0, 0, -1.5, "|1> (-Z)", ha='center', fontsize=12, color='white')
+    ax_bloch.text(1.5, 0, 0, "|+> (X)", ha='center', fontsize=12, color='white')
+    ax_bloch.text(-1.5, 0, 0, "|-> (-X)", ha='center', fontsize=12, color='white')
 
     if len(data['error_indices']) > 0:
         err_idx = data['error_indices'][0]
         alice_vec = get_bloch_vector(data['alice_bits'][err_idx], data['alice_bases'][err_idx])
         bob_vec = get_bloch_vector(data['bob_bits'][err_idx], data['bob_bases'][err_idx])
         ax_bloch.quiver(0, 0, 0, alice_vec[0], alice_vec[1], alice_vec[2], color='#39d353', linewidth=4, arrow_length_ratio=0.15, label="Alice's Original State")
-        ax_bloch.quiver(0, 0, 0, bob_vec[0], bob_vec[1], bob_vec[2], color='#f85149', linewidth=4, arrow_length_ratio=0.15, label="Collapsed State (Measured by Bob)")
-        ax_bloch.text2D(0.05, 0.85, f"Showing error at Bit Index {err_idx}:\nEve measured the particle in the wrong basis,\nforcing the green vector to collapse into the red vector!", transform=ax_bloch.transAxes, color='#f85149', fontsize=11, fontweight='bold', bbox=dict(facecolor='#0d1117', alpha=0.8, edgecolor='none'))
+        ax_bloch.quiver(0, 0, 0, bob_vec[0], bob_vec[1], bob_vec[2], color='#f85149', linewidth=4, arrow_length_ratio=0.15, label="Collapsed/Noisy State (Measured by Bob)")
+        ax_bloch.text2D(0.05, 0.85, f"Showing error at Bit Index {err_idx}:\nQuantum state was altered due to Eve's measurement\nor natural hardware decoherence!", transform=ax_bloch.transAxes, color='#f85149', fontsize=11, fontweight='bold', bbox=dict(facecolor='#0d1117', alpha=0.8, edgecolor='none'))
     elif len(data['matching_indices']) > 0:
         good_idx = data['matching_indices'][0]
         vec = get_bloch_vector(data['alice_bits'][good_idx], data['alice_bases'][good_idx])
@@ -195,7 +201,6 @@ def visualize_qkd():
 
     ax_bloch.set_axis_off()
     
-    # שינוי צבע הטקסט של המקרא (Legend)
     legend = ax_bloch.legend(loc='lower center', facecolor='#0d1117', edgecolor='#30363d')
     for text in legend.get_texts():
         text.set_color('white')
