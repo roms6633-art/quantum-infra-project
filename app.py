@@ -4,7 +4,7 @@ matplotlib.use('Agg')
 from flask import Flask, jsonify, request, send_file
 from qiskit import QuantumCircuit, transpile
 from qiskit_aer import AerSimulator
-from qiskit_aer.noise import NoiseModel, depolarizing_error # הספריות החדשות לרעש הפיזיקלי
+from qiskit_aer.noise import NoiseModel, depolarizing_error
 import io
 import numpy as np
 import matplotlib.pyplot as plt
@@ -13,43 +13,70 @@ import matplotlib.gridspec as gridspec
 
 app = Flask(__name__)
 
-def perform_qkd_logic(num_bits, eavesdropper):
-    alice_bits = np.random.randint(2, size=num_bits)
+def perform_qkd_logic(num_bits, eavesdropper, protocol='bb84'):
     alice_bases = np.random.randint(2, size=num_bits) 
     bob_bases = np.random.randint(2, size=num_bits)
+    
+    alice_bits = []
+    bob_bits = []
 
-    qc = QuantumCircuit(num_bits, num_bits)
-
-    for i in range(num_bits):
-        if alice_bits[i] == 1: qc.x(i)
-        if alice_bases[i] == 1: qc.h(i)
-
-    if eavesdropper:
-        eve_bases = np.random.randint(2, size=num_bits)
-        for i in range(num_bits):
-            if eve_bases[i] == 1: qc.h(i)
-            qc.measure(i, i) 
-            if eve_bases[i] == 1: qc.h(i)
-
-    for i in range(num_bits):
-        if bob_bases[i] == 1: qc.h(i)
-        qc.measure(i, i)
-
-    # --- הזרקת מודל הרעש הפיזיקלי לחומרה ---
+    # --- מודל רעש חומרה ---
     noise_model = NoiseModel()
-    # אנחנו מגדירים הסתברות שגיאה של 3% על השערים כדי לדמות חוסר דיוק בחומרה האמיתית
     error_gate = depolarizing_error(0.03, 1) 
     noise_model.add_all_qubit_quantum_error(error_gate, ['x', 'h'])
-
-    # טוענים את הסימולטור יחד עם מודל הרעש שבנינו
     simulator = AerSimulator(noise_model=noise_model)
-    # ----------------------------------------
+    # ----------------------
 
-    compiled_circuit = transpile(qc, simulator)
-    result = simulator.run(compiled_circuit, shots=1).result()
-    
-    measured_bits_str = list(result.get_counts().keys())[0][::-1] 
-    bob_bits = [int(b) for b in measured_bits_str]
+    if protocol == 'bb84':
+        alice_bits_prep = np.random.randint(2, size=num_bits)
+        # פתרון הזיכרון: פיצול למעגלים של קיוביט אחד
+        for i in range(num_bits):
+            qc = QuantumCircuit(1, 1)
+            if alice_bits_prep[i] == 1: qc.x(0)
+            if alice_bases[i] == 1: qc.h(0)
+
+            if eavesdropper:
+                eve_base = np.random.randint(2)
+                if eve_base == 1: qc.h(0)
+                qc.measure(0, 0) 
+                if eve_base == 1: qc.h(0)
+
+            if bob_bases[i] == 1: qc.h(0)
+            qc.measure(0, 0)
+            
+            compiled_circuit = transpile(qc, simulator)
+            result = simulator.run(compiled_circuit, shots=1).result()
+            measured_bit = list(result.get_counts().keys())[0]
+            bob_bits.append(int(measured_bit))
+        
+        alice_bits = list(alice_bits_prep)
+            
+    elif protocol == 'e91':
+        # פתרון הזיכרון: פיצול למעגלים של 2 קיוביטים שזורים
+        for i in range(num_bits):
+            qc = QuantumCircuit(2, 2)
+            qc.h(0)
+            qc.cx(0, 1) # יצירת השזירה
+            
+            if eavesdropper:
+                eve_base = np.random.randint(2)
+                if eve_base == 1: qc.h(1)
+                qc.measure(1, 1)
+                if eve_base == 1: qc.h(1)
+
+            if alice_bases[i] == 1: qc.h(0)
+            qc.measure(0, 0)
+            
+            if bob_bases[i] == 1: qc.h(1)
+            qc.measure(1, 1)
+
+            compiled_circuit = transpile(qc, simulator)
+            result = simulator.run(compiled_circuit, shots=1).result()
+            
+            # חילוץ התוצאות מהזוגות השזורים (Padding ל-2 תווים למקרה של אפסים מובילים)
+            measured_bits_str = list(result.get_counts().keys())[0].zfill(2)[::-1]
+            alice_bits.append(int(measured_bits_str[0]))
+            bob_bits.append(int(measured_bits_str[1]))
 
     sifted_key_alice = []
     sifted_key_bob = []
@@ -66,7 +93,7 @@ def perform_qkd_logic(num_bits, eavesdropper):
     secure = bool(qber < 0.1)
 
     return {
-        "num_bits": num_bits, "eavesdropper": eavesdropper,
+        "num_bits": num_bits, "eavesdropper": eavesdropper, "protocol": protocol.upper(),
         "alice_bits": alice_bits, "alice_bases": alice_bases,
         "bob_bases": bob_bases, "bob_bits": bob_bits,
         "matching_indices": matching_indices,
@@ -85,19 +112,18 @@ def get_bloch_vector(bit, base):
 def visualize_qkd():
     num_bits = int(request.args.get('bits', 16))
     eavesdropper = request.args.get('eve', 'false').lower() == 'true'
+    protocol = request.args.get('protocol', 'bb84').lower()
     
     if num_bits > 28: return jsonify({"error": "Too many bits for visualization"}), 400
+    if protocol not in ['bb84', 'e91']: return jsonify({"error": "Unsupported protocol"}), 400
     
-    data = perform_qkd_logic(num_bits, eavesdropper)
+    data = perform_qkd_logic(num_bits, eavesdropper, protocol)
     
     plt.style.use('dark_background')
     fig_width = max(num_bits * 0.5, 12) 
     fig = plt.figure(figsize=(fig_width, 14))
-    
     fig.patch.set_facecolor('#0d1117')
-    
     gs = gridspec.GridSpec(7, 1, height_ratios=[1, 1, 1, 1, 0.5, 1, 4])
-    
     axs = [fig.add_subplot(gs[i]) for i in range(6)]
     ax_bloch = fig.add_subplot(gs[6], projection='3d')
     plt.subplots_adjust(hspace=0.6)
@@ -112,8 +138,7 @@ def visualize_qkd():
     status_color = '#39d353' if data['secure'] else '#f85149'
     status_text = "SECURE (No Eve detected)" if data['secure'] else "BREACHED (Eve detected!)"
     
-    # הוספתי אינדיקציה בכותרת שמודל הרעש מופעל
-    fig.suptitle(f"Quantum Security Dashboard (BB84)\nStatus: {status_text} | Error Rate: {data['qber']:.1%} | Hardware Noise: Active", 
+    fig.suptitle(f"Quantum Security Dashboard ({data['protocol']})\nStatus: {status_text} | Error Rate: {data['qber']:.1%} | Hardware Noise: Active", 
                  fontsize=18, fontweight='bold', color=status_color, y=0.95)
 
     subtitle_color = '#c9d1d9'
@@ -130,21 +155,21 @@ def visualize_qkd():
             ax.add_patch(rect)
             ax.text(i, 0, markers[i], ha='center', va='center', fontsize=14, fontweight='bold', color='white')
 
-    draw_row(axs[0], data['alice_bits'], [base_symbols[b] for b in data['alice_bases']], [bit_colors[b] for b in data['alice_bits']], "1. Alice Sent")
+    alice_title = "1. Alice Measured (Entangled State)" if protocol == 'e91' else "1. Alice Sent"
+    draw_row(axs[0], data['alice_bits'], [base_symbols[b] for b in data['alice_bases']], [bit_colors[b] for b in data['alice_bits']], alice_title)
     
     axs[1].set_title("2. Quantum Channel", loc='left', fontsize=12, color=subtitle_color)
-    
     if eavesdropper:
         axs[1].text(num_bits/2, -0.3, "⚠️ EVE INTERCEPTED AND MEASURED! ⚠️", ha='center', va='center', color='#f85149', fontsize=14, fontweight='bold')
         for i in range(num_bits): axs[1].scatter(i, 0, marker='X', color='#f85149', s=50, alpha=0.6)
     else:
-        axs[1].text(num_bits/2, 0, "---> Clean Quantum Channel --->", ha='center', va='center', color='#58a6ff', fontsize=12)
+        channel_text = "---> Entangled Particles Transmitted --->" if protocol == 'e91' else "---> Clean Quantum Channel --->"
+        axs[1].text(num_bits/2, 0, channel_text, ha='center', va='center', color='#58a6ff', fontsize=12)
     
-    axs[1].set_ylim(-0.8, 0.5) 
-    axs[1].set_yticks([]); axs[1].set_xlim(-0.5, num_bits - 0.5); axs[1].set_xticks(range(num_bits))
+    axs[1].set_ylim(-0.8, 0.5); axs[1].set_yticks([]); axs[1].set_xlim(-0.5, num_bits - 0.5); axs[1].set_xticks(range(num_bits))
     axs[1].grid(True, axis='x', linestyle='--', color='#30363d', alpha=0.5)
 
-    draw_row(axs[2], data['bob_bits'], [base_symbols[b] for b in data['bob_bases']], [bit_colors[b] for b in data['bob_bits']], "3. Bob Received")
+    draw_row(axs[2], data['bob_bits'], [base_symbols[b] for b in data['bob_bases']], [bit_colors[b] for b in data['bob_bits']], "3. Bob Received & Measured")
     
     axs[3].set_title("4. Basis Sifting (Highlighting matches)", loc='left', fontsize=12, color=subtitle_color)
     axs[3].set_ylim(-0.5, 0.5); axs[3].set_yticks([]); axs[3].set_xlim(-0.5, num_bits - 0.5)
@@ -190,20 +215,19 @@ def visualize_qkd():
         err_idx = data['error_indices'][0]
         alice_vec = get_bloch_vector(data['alice_bits'][err_idx], data['alice_bases'][err_idx])
         bob_vec = get_bloch_vector(data['bob_bits'][err_idx], data['bob_bases'][err_idx])
-        ax_bloch.quiver(0, 0, 0, alice_vec[0], alice_vec[1], alice_vec[2], color='#39d353', linewidth=4, arrow_length_ratio=0.15, label="Alice's Original State")
-        ax_bloch.quiver(0, 0, 0, bob_vec[0], bob_vec[1], bob_vec[2], color='#f85149', linewidth=4, arrow_length_ratio=0.15, label="Collapsed/Noisy State (Measured by Bob)")
+        ax_bloch.quiver(0, 0, 0, alice_vec[0], alice_vec[1], alice_vec[2], color='#39d353', linewidth=4, arrow_length_ratio=0.15, label="Alice's Measured State")
+        ax_bloch.quiver(0, 0, 0, bob_vec[0], bob_vec[1], bob_vec[2], color='#f85149', linewidth=4, arrow_length_ratio=0.15, label="Collapsed/Noisy State")
         ax_bloch.text2D(0.05, 0.85, f"Showing error at Bit Index {err_idx}:\nQuantum state was altered due to Eve's measurement\nor natural hardware decoherence!", transform=ax_bloch.transAxes, color='#f85149', fontsize=11, fontweight='bold', bbox=dict(facecolor='#0d1117', alpha=0.8, edgecolor='none'))
     elif len(data['matching_indices']) > 0:
         good_idx = data['matching_indices'][0]
         vec = get_bloch_vector(data['alice_bits'][good_idx], data['alice_bases'][good_idx])
-        ax_bloch.quiver(0, 0, 0, vec[0], vec[1], vec[2], color='#58a6ff', linewidth=4, arrow_length_ratio=0.15, label="Preserved Quantum State")
+        label_text = "Preserved Entangled State" if protocol == 'e91' else "Preserved Quantum State"
+        ax_bloch.quiver(0, 0, 0, vec[0], vec[1], vec[2], color='#58a6ff', linewidth=4, arrow_length_ratio=0.15, label=label_text)
         ax_bloch.text2D(0.05, 0.85, "Perfect Transmission!\nThe quantum state remained intact.", transform=ax_bloch.transAxes, color='#39d353', fontsize=11, fontweight='bold', bbox=dict(facecolor='#0d1117', alpha=0.8, edgecolor='none'))
 
     ax_bloch.set_axis_off()
-    
     legend = ax_bloch.legend(loc='lower center', facecolor='#0d1117', edgecolor='#30363d')
-    for text in legend.get_texts():
-        text.set_color('white')
+    for text in legend.get_texts(): text.set_color('white')
 
     buf = io.BytesIO()
     fig.savefig(buf, format='png', bbox_inches='tight', dpi=100, facecolor=fig.get_facecolor())
@@ -215,6 +239,93 @@ def visualize_qkd():
 @app.route('/health')
 def health_check():
     return jsonify({"status": "Healthy", "service": "Quantum Security Visualization API"})
+
+@app.route('/')
+def main_dashboard():
+    return '''
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <title>Quantum Security Control Center</title>
+        <style>
+            body { background-color: #0d1117; color: #c9d1d9; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 20px; }
+            h1 { text-align: center; color: #58a6ff; font-size: 2.5em; margin-bottom: 5px; }
+            p.subtitle { text-align: center; color: #8b949e; font-size: 1.2em; margin-top: 0; margin-bottom: 20px; }
+            .controls { text-align: center; margin-bottom: 15px; }
+            button { background-color: #238636; color: white; border: none; padding: 12px 24px; font-size: 16px; cursor: pointer; border-radius: 6px; font-weight: bold; margin: 0 10px; transition: 0.2s; }
+            button:hover { background-color: #2ea043; transform: scale(1.05); }
+            .danger-btn { background-color: #da3633; }
+            .danger-btn:hover { background-color: #f85149; }
+            #status-msg { text-align: center; font-size: 1.2em; font-weight: bold; height: 30px; margin-bottom: 20px; transition: 0.3s; }
+            .grid { display: flex; gap: 20px; justify-content: center; flex-wrap: wrap; }
+            .panel { background-color: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 20px; width: 48%; min-width: 700px; box-sizing: border-box; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+            img { max-width: 100%; height: auto; border-radius: 8px; border: 1px solid #30363d; transition: opacity 0.3s; }
+            h2 { margin-top: 0; }
+        </style>
+    </head>
+    <body>
+        <h1>🛡️ Quantum-Safe Infrastructure</h1>
+        <p class="subtitle">Live Protocol Comparison: BB84 vs E91 (Entanglement)</p>
+        
+        <div class="controls">
+            <button id="safeBtn" onclick="setEve(false)">🟢 Secure Mode (Clean Channel)</button>
+            <button id="eveBtn" class="danger-btn" onclick="setEve(true)">🔴 Simulate Cyber Attack (Inject Eve)</button>
+        </div>
+
+        <div id="status-msg" style="color: #39d353;">System Ready. Select an operation.</div>
+
+        <div class="grid">
+            <div class="panel">
+                <h2 style="color: #39d353;">BB84 Protocol (Standard QKD)</h2>
+                <img id="bb84-img" src="/qkd/visualize?bits=16&eve=false&protocol=bb84" alt="BB84 Loading...">
+            </div>
+            <div class="panel">
+                <h2 style="color: #a371f7;">E91 Protocol (Quantum Entanglement)</h2>
+                <img id="e91-img" src="/qkd/visualize?bits=16&eve=false&protocol=e91" alt="E91 Loading...">
+            </div>
+        </div>
+
+        <script>
+            function setEve(isEve) {
+                const bb84 = document.getElementById('bb84-img');
+                const e91 = document.getElementById('e91-img');
+                const status = document.getElementById('status-msg');
+                
+                // --- תחילת טעינה ---
+                bb84.style.opacity = '0.3';
+                e91.style.opacity = '0.3';
+                status.style.color = '#d29922';
+                status.innerText = '⏳ Simulating Quantum Circuits... Please wait (~4 seconds)';
+
+                const t = new Date().getTime();
+                bb84.src = `/qkd/visualize?bits=16&eve=${isEve}&protocol=bb84&t=${t}`;
+                e91.src = `/qkd/visualize?bits=16&eve=${isEve}&protocol=e91&t=${t}`;
+
+                let loadedCount = 0;
+                function checkDone() {
+                    loadedCount++;
+                    if (loadedCount === 2) {
+                        // --- סיום טעינה ---
+                        bb84.style.opacity = '1';
+                        e91.style.opacity = '1';
+                        if (isEve) {
+                            status.style.color = '#f85149';
+                            status.innerText = '🔴 Cyber Attack Active! Eve detected on the lines.';
+                        } else {
+                            status.style.color = '#39d353';
+                            status.innerText = '🟢 Secure Channel Active. Natural hardware noise only.';
+                        }
+                    }
+                }
+
+                bb84.onload = checkDone;
+                e91.onload = checkDone;
+            }
+        </script>
+    </body>
+    </html>
+    '''
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
