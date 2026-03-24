@@ -13,6 +13,6 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # מעתיקים רק את קובץ הפייתון, בלי תמונות!
-COPY app.py .
+COPY . .
 
 CMD ["python", "app.py"]

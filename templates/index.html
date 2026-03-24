@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Quantum Security Control Center</title>
+    <style>
+        body { background-color: #0d1117; color: #c9d1d9; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; display: flex; height: 100vh; overflow: hidden; }
+        
+        /* Sidebar Left (Navigation) */
+        .sidebar-left { width: 220px; background-color: #161b22; border-right: 1px solid #30363d; padding: 20px 10px; display: flex; flex-direction: column; gap: 10px; }
+        .sidebar-left h2 { color: #58a6ff; text-align: center; font-size: 1.2em; margin-bottom: 20px; }
+        .tab-btn { background: transparent; color: #8b949e; border: 1px solid transparent; padding: 12px; text-align: left; font-size: 14px; font-weight: bold; border-radius: 6px; cursor: pointer; transition: 0.2s; }
+        .tab-btn.active { background-color: #238636; color: white; }
+
+        /* Main Content Area */
+        .main-content { flex: 1; padding: 25px; overflow-y: auto; background-color: #0d1117; }
+        
+        /* Sidebar Right (Log Terminal) */
+        .sidebar-right { width: 350px; background-color: #010409; border-left: 1px solid #30363d; display: flex; flex-direction: column; }
+        .log-header { background-color: #161b22; padding: 15px; border-bottom: 1px solid #30363d; color: #58a6ff; font-weight: bold; font-size: 0.9em; display: flex; justify-content: space-between; }
+        #log-container { flex: 1; padding: 15px; overflow-y: auto; font-family: 'Courier New', Courier, monospace; font-size: 11px; line-height: 1.4; display: flex; flex-direction: column; gap: 8px; }
+        
+        /* Log Entry Styles */
+        .log-entry { padding-bottom: 8px; border-bottom: 1px solid #161b22; animation: scanline 0.2s ease-out; }
+        .log-time { color: #8b949e; }
+        .log-id { color: #d29922; margin: 0 5px; }
+        .log-level-info { color: #39d353; font-weight: bold; }
+        .log-level-alert { color: #f85149; font-weight: bold; animation: blink 1s infinite; }
+        .log-msg { color: #c9d1d9; display: block; margin-top: 2px; }
+        .log-hash { color: #484f58; font-style: italic; font-size: 0.9em; }
+
+        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+        @keyframes scanline { from { opacity: 0; transform: translateX(5px); } to { opacity: 1; transform: translateX(0); } }
+
+        /* Panels & UI */
+        .tab-pane { display: none; }
+        .tab-pane.active { display: block; }
+        .panel { background-color: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 20px; text-align: center; margin-bottom: 20px; }
+        h1 { color: #58a6ff; font-size: 1.8em; margin-top: 0; }
+        img { max-width: 100%; border-radius: 8px; border: 1px solid #30363d; }
+        .action-btn { background-color: #238636; color: white; border: none; padding: 10px 20px; border-radius: 6px; font-weight: bold; cursor: pointer; margin: 0 5px; }
+        .danger-btn { background-color: #da3633; }
+        
+        /* Slider Styling */
+        input[type=range] { width: 100%; margin: 15px 0; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+    <div class="sidebar-left">
+        <h2>🛡️ NAV</h2>
+        <button class="tab-btn active" onclick="switchTab(event, 'tab-monitor')">📡 Monitor</button>
+        <button class="tab-btn" onclick="switchTab(event, 'tab-attenuation')">📉 Fiber</button>
+        <button class="tab-btn" onclick="switchTab(event, 'tab-privacy')">🔐 Privacy</button>
+        <button class="tab-btn" onclick="switchTab(event, 'tab-analytics')">📊 Stats</button>
+    </div>
+
+    <div class="main-content">
+        <div id="tab-monitor" class="tab-pane active">
+            <h1>Live Quantum Channel</h1>
+            <div class="panel">
+                <button class="action-btn" onclick="setEve(false)">🟢 Secure</button>
+                <button class="action-btn danger-btn" onclick="setEve(true)">🔴 Eve Attack</button>
+                <div id="status-msg" style="margin-top:15px; font-weight:bold;">Status: Ready</div>
+                <div style="display:flex; gap:10px; margin-top:15px;">
+                    <img id="bb84-img" src="/qkd/visualize?bits=16&eve=false&protocol=bb84" style="width:50%;">
+                    <img id="e91-img" src="/qkd/visualize?bits=16&eve=false&protocol=e91" style="width:50%;">
+                </div>
+            </div>
+        </div>
+
+        <div id="tab-attenuation" class="tab-pane">
+            <h1>Fiber Attenuation</h1>
+            <div class="panel">
+                <label>Distance: <span id="distValue">0</span> km</label>
+                <input type="range" min="0" max="150" value="0" oninput="updateDist(this.value)" onchange="fetchDist(this.value)">
+                <div style="display:flex; justify-content:space-around; background:#0d1117; padding:10px; border-radius:5px;">
+                    <span>Rate: <b id="rateVal" style="color:#39d353;">10,000</b></span>
+                    <span>QBER: <b id="qberVal" style="color:#e3b341;">3.0%</b></span>
+                </div>
+                <img id="dist-img" src="/qkd/simulate_distance?km=0" style="margin-top:15px;">
+            </div>
+        </div>
+
+        <div id="tab-privacy" class="tab-pane">
+            <h1>Privacy Amplification</h1>
+            <div class="panel">
+                <label>Eve Knowledge: <span id="eveVal">25</span>%</label>
+                <input type="range" min="0" max="60" value="25" oninput="document.getElementById('eveVal').innerText=this.value" onchange="fetchPrivacy(this.value)">
+                <img id="priv-img" src="/qkd/privacy?knowledge=25" style="margin-top:15px;">
+            </div>
+        </div>
+
+        <div id="tab-analytics" class="tab-pane">
+            <h1>Entropy Analytics</h1>
+            <div class="panel">
+                <button class="action-btn" onclick="refreshAnalytics()">🔄 Re-sample</button>
+                <img id="anal-img" src="/qkd/entropy_stats" style="margin-top:15px;">
+            </div>
+        </div>
+    </div>
+
+    <div class="sidebar-right">
+        <div class="log-header">
+            <span>EVENT_LOG_TERMINAL</span>
+            <span id="log-count">000</span>
+        </div>
+        <div id="log-container">
+            </div>
+    </div>
+
+    <script>
+        let logId = 100;
+
+        function addLog(level, msg) {
+            const container = document.getElementById('log-container');
+            const time = new Date().toLocaleTimeString('he-IL', { hour12: false });
+            logId++;
+            
+            // יצירת קוד הצפנה מזויף (Hash) ליופי
+            const fakeHash = Math.random().toString(16).substring(2, 10).toUpperCase() + 
+                             "-" + Math.random().toString(16).substring(2, 6).toUpperCase();
+
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            const levelClass = level === 'ALERT' ? 'log-level-alert' : 'log-level-info';
+            
+            entry.innerHTML = `
+                <span class="log-time">[${time}]</span>
+                <span class="log-id">#${logId}</span>
+                <span class="${levelClass}">[${level}]</span>
+                <span class="log-msg">${msg}</span>
+                <span class="log-hash">ENC_SIG: ${fakeHash}</span>
+            `;
+            
+            container.prepend(entry); // החדש למעלה
+            document.getElementById('log-count').innerText = logId;
+        }
+
+        // לוג פתיחה
+        addLog('INFO', 'Quantum Infrastructure Online. Listening on Port 5000.');
+
+        function switchTab(evt, tabId) {
+            document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(tabId).classList.add('active');
+            evt.currentTarget.classList.add('active');
+            addLog('INFO', `Mapsd to ${tabId.replace('tab-', '').toUpperCase()} module.`);
+        }
+
+        function setEve(isEve) {
+            const t = new Date().getTime();
+            document.getElementById('bb84-img').src = `/qkd/visualize?bits=16&eve=${isEve}&protocol=bb84&t=${t}`;
+            document.getElementById('e91-img').src = `/qkd/visualize?bits=16&eve=${isEve}&protocol=e91&t=${t}`;
+            
+            if(isEve) {
+                addLog('ALERT', 'INTRUSION DETECTED! Eve intercepted the quantum channel.');
+                document.getElementById('status-msg').innerText = "Status: BREACHED";
+                document.getElementById('status-msg').style.color = "#f85149";
+            } else {
+                addLog('INFO', 'Secure circuit generated. QBER within safe bounds.');
+                document.getElementById('status-msg').innerText = "Status: SECURE";
+                document.getElementById('status-msg').style.color = "#39d353";
+            }
+        }
+
+        function updateDist(val) {
+            document.getElementById('distValue').innerText = val;
+            let qber = (3.0 + 12.0 * Math.pow(val / 150, 2)).toFixed(2);
+            let rate = Math.round(10000 * Math.pow(10, -(0.2 * val) / 10));
+            document.getElementById('qberVal').innerText = qber + "%";
+            document.getElementById('rateVal').innerText = rate.toLocaleString();
+        }
+
+        function fetchDist(val) {
+            document.getElementById('dist-img').src = `/qkd/simulate_distance?km=${val}&t=${new Date().getTime()}`;
+            if(val > 80) {
+                addLog('ALERT', `Critical signal loss at ${val}km. QBER exceeding safety threshold.`);
+            } else {
+                addLog('INFO', `Fiber link established at ${val}km.`);
+            }
+        }
+
+        function fetchPrivacy(val) {
+            document.getElementById('priv-img').src = `/qkd/privacy?knowledge=${val}&t=${new Date().getTime()}`;
+            addLog('INFO', `Privacy Amplification initiated. Eve knowledge reduced from ${val}%.`);
+        }
+
+        function refreshAnalytics() {
+            document.getElementById('anal-img').src = `/qkd/entropy_stats?t=${new Date().getTime()}`;
+            addLog('INFO', 'Statistical re-sampling of Entropy completed. Randomness verified.');
+        }
+    </script>
+</body>
+</html>
